@@ -114,7 +114,7 @@ class AstroPNGWriter(Writer):
             for key, value in self.metadata.iteritems():
                 metadata += "%s=%s," % ( str(key), str(value) )
             chunk_data = struct.pack("!%dc" % len(metadata), *metadata)
-            write_chunk(outfile, 'zOON', chunk_data)
+            write_chunk(outfile, 'fITS', chunk_data)
 
         # http://www.w3.org/TR/PNG/#11IDAT
         if self.compression is not None:
