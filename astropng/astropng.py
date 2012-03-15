@@ -65,39 +65,3 @@ def fits2png(filename, bit_depth = 16, clip_on_percentiles = False):
     f.close()
     
     
-def compute_percentile(data, lower=0.0025, upper=0.9975):
-    """
-    :param data:    Array of pixel intensities
-    :param lower:   Lower percentile
-    :param upper:   Upper percentile
-
-    Computes the pixel value of data at the given percentiles
-    """
-
-    data = numpy.sort(data)
-    num_elements = data.size
-    vmin_index = numpy.floor( lower*(num_elements-1) + 1 )
-    vmax_index = numpy.floor( upper*(num_elements-1) + 1 )
-    lower_index = numpy.floor( (lower - 0.0015)*(num_elements - 1) + 1 );
-    upper_index = numpy.floor( (upper + 0.0015)*(num_elements - 1) + 1 );
-
-    vmin = data[vmin_index]
-    vmax = data[vmax_index]
-
-    return vmin, vmax
-
-
-def trim_data(data, vmin, vmax):
-    """
-    :param data: 1D array
-    :param vmin: Minimum value for pixels
-    :param vmax: Maximum value for pixels
-
-    Trim data based on vmin and vmax.
-    """
-    min_indexes = numpy.where( data < vmin )[0]
-    max_indexes = numpy.where( data > vmax )[0]
-    data[min_indexes] = vmin
-    data[max_indexes] = vmax
-
-    return data

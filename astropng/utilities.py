@@ -18,20 +18,7 @@ def to_scaled_integers(data):
     z_zeros     = numpy.nanmin(data, axis = 1)
     z_scales    = zscales(data)
     
-    scaled_data = numpy.round( ( data - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) )
-    
-    row_number = 0
-    for row in data:
-        
-        z_scales[row_number] = zscale(row)
-        
-        random_row = random_numbers[:width]
-        
-        row_scaled = numpy.round((row - z_zeros[row_number]) / z_scales[row_number] + random_row - 0.5)
-        
-        random_numbers = numpy.roll(random_numbers, -width)
-        row_number += 1
-        
+    scaled_data = numpy.round( ( data - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) )    
     return scaled_data, z_scales
 
 def nan_locations(data):
