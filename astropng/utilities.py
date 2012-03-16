@@ -12,14 +12,16 @@ def to_scaled_integers(data):
     height, width = data.shape
     
     # Generate 10000 random numbers
-    random_numbers = random_number_generator()
+    random_numbers = random_number_generator(N_RANDOM = width * height).reshape( (height, width) )
     
     # Get the zeros and scales of each row
     z_zeros     = numpy.nanmin(data, axis = 1)
     z_scales    = zscales(data)
     
-    scaled_data = numpy.round( ( data - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) )    
-    return scaled_data, z_scales
+    # Quantize the data
+    quantized_data = numpy.round( ( data - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
+    
+    return z_zeros, z_scales, quantized_data
 
 def nan_locations(data):
     """
@@ -48,13 +50,13 @@ def zscales(data, D = 100):
     sigmas = median_absolute_deviations(data)
     return sigmas / float(D)
 
-def random_number_generator():
+def random_number_generator(N_RANDOM = 10000):
     """
     Random number generator as described in:
     
     http://fits.gsfc.nasa.gov/registry/tilecompression/tilecompression2.2.pdf
     """
-    a, m, seed, N_RANDOM = 16807.0, 2147483647.0, 1, 10000
+    a, m, seed = 16807.0, 2147483647.0, 1
     random_numbers = numpy.empty(N_RANDOM)
     
     for i in xrange(N_RANDOM):
