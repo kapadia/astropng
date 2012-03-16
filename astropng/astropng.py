@@ -15,21 +15,82 @@ class AstroPNG(object):
         :param f:   The path of the image file
         """
         filename, extension = os.path.splitext(f)
-        if extension.lower == '.png':
+        if extension.lower() == '.png':
             self.png = f
+            self.fits = None
         else:
             self.fits = f
+            self.png = None
         
         self.quantized = False
         self.clipped = False
     
-    def to_png(self, out_file):
+    def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False):
         """
         Converts the FITS file to a PNG.
         
-        :param out_file:    User specified filename for the PNG
+        :param out_file:            User specified filename for the PNG
+        :param clip_on_percentiles: Clips flux values to a lower and upper percentile
+        
+        .. warning:: Setting bit_depth to 8 may reduce the dynamic range of the image.
         """
-        pass
+        if not self.fits:
+            raise ValueError, "AstroPNG was not initialized with a FITS image"
+        
+        hdu = pyfits.open(self.fits)
+        header, fluxes = hdu[0].header, hdu[0].data
+        
+        height, width = fluxes.shape
+        
+        # Prepare data
+        fluxes = numpy.flipud(fluxes)
+        fluxes = fluxes.flatten()
+        
+        # Determine the minimum pixel and maximum pixel value
+        min_pix, max_pix = fluxes.min(), fluxes.max()
+        
+        # Clip data
+        if clip_on_percentiles:
+            min_pix, max_pix = self.__compute_percentile(fluxes)
+            fluxes = self.__clip(fluxes, min_pix, max_pix)
+    
+        # Scale image to 8 bit integer space
+        if bit_depth == 8:
+            range_of_pixels = max_pix - min_pix
+            fluxes = 255 * ( (data - min_pix) / range_of_pixels )
+            min_pix, max_pix = 0, 255
+        
+        # Reshape the data to its original dimensions
+        fluxes = fluxes.reshape(height, width)
+        
+        # If non-integer data type then quantize pixels
+        if header['BITPIX'] in (-32, -64):
+            nans = self.__find_nans(fluxes)
+            z_zeros, z_scales, fluxes = self.__quantize(fluxes)
+            
+            # Replace the nans with zeros
+            
+            nan_indices = numpy.where(numpy.isnan(fluxes))
+            fluxes[nan_indices] = 0
+        
+        # Create a PNG writer object with the appropriate settings
+        png_writer = AstroPNGWriter(
+            width = width,
+            height = height,
+            greyscale = True,
+            alpha = False,
+            bitdepth = bit_depth,
+        )
+
+        # Set various metadata in PNG
+        png_writer.set_header(header)
+        if self.quantized:
+            png_writer.set_quantization_parameters(z_zeros, z_scales)
+            png_writer.set_nans(nans)
+
+        f = open(out_file, 'wb')
+        png_writer.write(f, fluxes)
+        f.close()
     
     def to_fits(self, out_file):
         """
@@ -37,25 +98,26 @@ class AstroPNG(object):
         
         :param out_file:    User specified filename for the FITS
         """
-        pass
+        raise NotImplementedError
     
-    def __quantize(self, arg):
+    def __quantize(self, fluxes):
         """
         Quantizes the fluxes in the FITS image when it is represented by floats.
         
         .. warning:: Calling this method results in lossy compression
         """
         # Get the dimensions
-        height, width = data.shape
+        height, width = fluxes.shape
         
         # Generate 10000 random numbers
-        random_numbers = self.__random_number_generator(N_RANDOM = width * height).reshape( (height, width) )
+        random_numbers = self.__random_number_generator(N = width * height).reshape( (height, width) )
         
         # Get the zeros and scales of each row then quantize with dithering
-        z_zeros     = numpy.nanmin(data, axis = 1)
-        z_scales    = zscales(data)
-        quantized_data = numpy.round( ( data - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
+        z_zeros     = numpy.nanmin(fluxes, axis = 1)
+        z_scales    = self.__zscales(fluxes)
+        quantized_data = numpy.round( ( fluxes - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
         
+        self.quantized = True
         return z_zeros, z_scales, quantized_data
     
     def __find_nans(self, fluxes):
@@ -65,7 +127,7 @@ class AstroPNG(object):
         
         e.g. data[y, x] = nan
         """
-        y, x = numpy.where(numpy.isnan(data))
+        y, x = numpy.where(numpy.isnan(fluxes))
         locations = numpy.empty(x.size + y.size, dtype = numpy.int16)
         locations[0::2], locations[1::2] = x, y
         
@@ -82,7 +144,7 @@ class AstroPNG(object):
         noise = 0.6052697 * numpy.median(numpy.abs(2.0 * fluxes[:, 2:n-2] - fluxes[:, 0:n-4] - fluxes[:, 4:n]), axis = 1)
         return noise
 
-    def __zscales(fluxes, D = 100):
+    def __zscales(self, fluxes, D = 100):
         """
         :param fluxes:  2D array of fluxes
         :param D:       Relates to noise bits per pixel.  Suggested range is
@@ -95,7 +157,7 @@ class AstroPNG(object):
         
         Computes the scale parameter that is used to represent 32 bit float as integers.
         """
-        sigmas = self.__median_absolute_deviations(data)
+        sigmas = self.__median_absolute_deviations(fluxes)
         return sigmas / float(D)
 
     def __random_number_generator(self, N = 10000):
@@ -144,70 +206,5 @@ class AstroPNG(object):
         data[min_indexes] = vmin
         data[max_indexes] = vmax
 
+        self.clipped = True
         return data
-        
-
-
-
-def fits2png(filename, bit_depth = 16, clip_on_percentiles = False):
-    """
-    :param filename:            Path to FITS image
-    :param bit_depth:           Either 8 or 16 bit
-    :param clip_on_quantiles:   Clip data based on computed quantiles
-    
-    Converts a FITS image into a PNG, while testing if the image may be represented by integers.
-    """
-    
-    hdu = pyfits.open(filename)
-    
-    header = hdu[0].header
-    data = hdu[0].data
-    
-    y_dim, x_dim = data.shape
-    
-    # Prep data for packing
-    data = numpy.flipud(data)
-    data = data.flatten()
-    
-    # Determine the minimum pixel and maximum pixel value
-    min_pix = data.min()
-    max_pix = data.max()
-    
-    # Calculate vmin and vmax
-    vmin, vmax = compute_percentile(data)
-    
-    # Clip data
-    if clip_on_percentiles:
-        data = trim_data(data, vmin, vmax)
-        min_pix = vmin
-        max_pix = vmax
-        
-    # Scale image to 8 bit integer space
-    if bit_depth == 8:
-        range_of_pixels = max_pix - min_pix
-        data = 255 * ( (data - min_pix) / range_of_pixels )
-        min_pix, max_pix = 0, 255
-    
-    # Reshape the data to its original dimensions
-    data = data.reshape(y_dim, x_dim)
-    
-    # Create a PNG writer object with the appropriate settings
-    png_writer = AstroPNGWriter(
-        width = x_dim,
-        height = y_dim,
-        greyscale = True,
-        alpha = False,
-        bitdepth = bit_depth,
-    )
-    
-    # Set metadata in PNG
-    png_writer.set_header(header)
-    
-    # Create the file name
-    out_file = os.path.splitext(filename)[0] + '.png'
-    
-    f = open(out_file, 'wb')
-    png_writer.write(f, data)
-    f.close()
-    
-    

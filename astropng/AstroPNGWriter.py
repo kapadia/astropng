@@ -3,6 +3,9 @@ import struct
 from array import array
 from png import Writer
 from png import write_chunk
+
+import numpy
+
 try:  # see :pyver:old
     array.tostring
 except:
@@ -20,21 +23,60 @@ _signature = struct.pack('8B', 137, 80, 78, 71, 13, 10, 26, 10)
 
 class AstroPNGWriter(Writer):
     """
-    Custom PNG writer to incorporate non-standard chunks for storing additional from a FITS header metadata.
+    Custom PNG writer to incorporate non-standard chunks for storing additional
+    metadata from a FITS header metadata.  We implement 3 custom chunks:
+    
+    * fITS
+        Stores the entire FITS header as an ASCII string.
+    * qANT
+        Stores 2 arrays representing ZZERO and ZSCALE when fluxes have been 
+        quantized to integers.
+    * nANS
+        Stores the pixel coordinates of nans
     """
     
     def __init__(self, *args, **kwargs):
         Writer.__init__(self, *args, **kwargs)
         self.fITS = False
+        self.qANT = False
+        self.nANS = False
 
     def set_header(self, header):
         """
         Store metadata from the FITS header into the PNG chunk zOON
         """
-        self.metadata = {}
-        for key, value in header.iteritems():
-            self.metadata[key] = value
+        self.fits_header = str(header)
         self.fITS = True
+    
+    def set_quantization_parameters(self, zzero, zscale):
+        """
+        Store quantization parameters, ZZERO and ZSCALE.
+        """
+        self.zzero = zzero
+        self.zscale = zscale
+        self.nan_representation = None
+        
+        values = numpy.concatenate((zzero, zscale))
+        if numpy.isnan(values).any():
+            self.nan_representation = 0
+            while True:
+                if numpy.where( values == self.nan_representation)[0].size > 0:
+                    self.nan_representation += 1
+                else:
+                    break
+        nan_indexes = numpy.where(numpy.isnan(self.zzero))[0]
+        self.zzero[nan_indexes] = self.nan_representation
+        nan_indexes = numpy.where(numpy.isnan(self.zscale))[0]
+        self.zscale[nan_indexes] = self.nan_representation
+        
+        self.qANT = True
+    
+    def set_nans(self, nans):
+        """
+        Store the location of NANs when quantizing float data.
+        """
+        self.nans = nans
+        self.nANS = True
     
     def write_passes(self, outfile, rows, packed=False):
         """
@@ -110,11 +152,26 @@ class AstroPNGWriter(Writer):
 
         # Write custom chunk with information from the FITS header
         if self.fITS:
-            metadata = ""
-            for key, value in self.metadata.iteritems():
-                metadata += "%s=%s," % ( str(key), str(value) )
-            chunk_data = struct.pack("!%dc" % len(metadata), *metadata)
+            length = len(self.fits_header)
+            chunk_data = struct.pack("!%dc" % length, *self.fits_header)
             write_chunk(outfile, 'fITS', chunk_data)
+            
+        # Write custom chunk with quantization parameters
+        if self.qANT:
+            parameters = numpy.empty(self.zzero.size + self.zscale.size, dtype = self.zzero.dtype)
+            parameters[0::2] = self.zzero
+            parameters[1::2] = self.zscale
+            length = parameters.size
+            
+            chunk_data = struct.pack("!I", self.nan_representation)
+            chunk_data += struct.pack("!%df" % length, *parameters)
+            write_chunk(outfile, 'qANT', chunk_data)
+        
+        # Write custom chunk with nan locations
+        if self.nANS:
+            length = self.nans.size
+            chunk_data = struct.pack("!%dI" % length, *self.nans)
+            write_chunk(outfile, 'nANS', chunk_data)
 
         # http://www.w3.org/TR/PNG/#11IDAT
         if self.compression is not None:
