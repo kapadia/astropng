@@ -1,6 +1,9 @@
 import os
+import struct
+import itertools
 import numpy
 import pyfits
+from png import Reader
 from AstroPNGWriter import AstroPNGWriter
 
 class AstroPNG(object):
@@ -32,7 +35,8 @@ class AstroPNG(object):
         :param out_file:            User specified filename for the PNG
         :param clip_on_percentiles: Clips flux values to a lower and upper percentile
         
-        .. warning:: Setting bit_depth to 8 may reduce the dynamic range of the image.
+        .. warning:: Setting bit_depth to 8 may reduce the dynamic range of the image.        
+        .. warning:: Setting clip_on_percentiles to True reduces the dynamic range of the image.
         """
         if not self.fits:
             raise ValueError, "AstroPNG was not initialized with a FITS image"
@@ -69,7 +73,6 @@ class AstroPNG(object):
             z_zeros, z_scales, fluxes = self.__quantize(fluxes)
             
             # Replace the nans with zeros
-            
             nan_indices = numpy.where(numpy.isnan(fluxes))
             fluxes[nan_indices] = 0
         
@@ -98,7 +101,76 @@ class AstroPNG(object):
         
         :param out_file:    User specified filename for the FITS
         """
-        raise NotImplementedError
+        if not self.png:
+            raise ValueError, "AstroPNG was not initialized with a PNG image"
+        
+        # Reading the PNG takes two passes (for now)
+        r = Reader(self.png)
+        width, height, imgdata, metadata = r.read()
+        
+        fluxes = numpy.vstack( itertools.imap(numpy.uint16, imgdata) )
+        
+        r = Reader(self.png)
+        chunks = r.chunks()
+        
+        has_fits            = False
+        has_quantization    = False
+        has_nans            = False
+        
+        # Read the custom astro chunks
+        while True:
+            chunk_name, data = chunks.next()
+            
+            if chunk_name == 'fITS':
+                header = self.__read_fits_header(data)
+                has_fits = True
+            elif chunk_name == 'qANT':
+                zzero, zscale = self.__read_quantization_parameters(data, height)
+                has_quantization = True
+            elif chunk_name == 'nANS':
+                x_nans, y_nans = self.__read_nan_locations(data)
+                has_nans = True
+            elif chunk_name == 'iEND':
+                break
+        
+        if has_quantization:
+            random_numbers = self.__random_number_generator(N = width * height).reshape( (height, width) )
+            fluxes = (fluxes - random_numbers + 0.5) * numpy.vstack(zscale) + numpy.vstack(zzero)
+        if has_nans:
+            fluxes = fluxes[y, x] = numpy.nan
+        
+        fluxes = numpy.flipud(fluxes)
+        hdu = pyfits.PrimaryHDU(fluxes, header)
+        hdu.writeto(out_file)
+    
+    def __read_nan_locations(self, data):
+        length = len(data) / 4
+        locations = numpy.array(struct.unpack("!%dI" % length, data))
+        x, y = numpy.split(locations, 2)
+    
+    def __read_quantization_parameters(self, data, num_tiles):
+        """
+        Reads the quantization parameters stored in the qANT chunk of a PNG.
+        """
+        nan_representation = struct.unpack("!I", data[:4])[0]
+        parameters = numpy.array(struct.unpack("!%df" % (2 * num_tiles), data[4:]))
+        zzero = parameters[0::2]
+        zscale = parameters[1::2]
+        return zzero, zscale
+        
+    def __read_fits_header(self, data):
+        """
+        Reads the FITS header stored in a PNG chunk.
+        """
+        HEADER_LENGTH_MULTIPLE = 2880
+        
+        additional_whitespace = HEADER_LENGTH_MULTIPLE - len(data) % HEADER_LENGTH_MULTIPLE
+        data += additional_whitespace * " "
+        
+        header = pyfits.Header()
+        header.fromstring(data)
+        
+        return header        
     
     def __quantize(self, fluxes):
         """
@@ -109,7 +181,7 @@ class AstroPNG(object):
         # Get the dimensions
         height, width = fluxes.shape
         
-        # Generate 10000 random numbers
+        # Generate random numbers
         random_numbers = self.__random_number_generator(N = width * height).reshape( (height, width) )
         
         # Get the zeros and scales of each row then quantize with dithering
@@ -128,10 +200,7 @@ class AstroPNG(object):
         e.g. data[y, x] = nan
         """
         y, x = numpy.where(numpy.isnan(fluxes))
-        locations = numpy.empty(x.size + y.size, dtype = numpy.int16)
-        locations[0::2], locations[1::2] = x, y
-        
-        return locations
+        return numpy.concatenate((x, y))
     
     def __median_absolute_deviations(self, fluxes):
         """
