@@ -25,8 +25,8 @@ class AstroPNG(object):
             self.fits = f
             self.png = None
         
-        self.quantized = False
-        self.clipped = False
+        self.quantized  = False
+        self.clipped    = False
     
     def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False):
         """
@@ -119,8 +119,10 @@ class AstroPNG(object):
         
         # Read the custom astro chunks
         while True:
-            chunk_name, data = chunks.next()
-            
+            try:
+                chunk_name, data = chunks.next()
+            except:
+                break
             if chunk_name == 'fITS':
                 header = self.__read_fits_header(data)
                 has_fits = True
@@ -137,16 +139,18 @@ class AstroPNG(object):
             random_numbers = self.__random_number_generator(N = width * height).reshape( (height, width) )
             fluxes = (fluxes - random_numbers + 0.5) * numpy.vstack(zscale) + numpy.vstack(zzero)
         if has_nans:
-            fluxes = fluxes[y, x] = numpy.nan
+            fluxes[y_nans, x_nans] = numpy.nan
         
         fluxes = numpy.flipud(fluxes)
         hdu = pyfits.PrimaryHDU(fluxes, header)
-        hdu.writeto(out_file)
+        hdu.verify()
+        hdu.writeto(out_file, output_verify='ignore')
     
     def __read_nan_locations(self, data):
         length = len(data) / 4
-        locations = numpy.array(struct.unpack("!%dI" % length, data))
+        locations = numpy.array( struct.unpack("!%dI" % length, data) )
         x, y = numpy.split(locations, 2)
+        return x, y
     
     def __read_quantization_parameters(self, data, num_tiles):
         """
@@ -162,15 +166,19 @@ class AstroPNG(object):
         """
         Reads the FITS header stored in a PNG chunk.
         """
-        HEADER_LENGTH_MULTIPLE = 2880
+        # HEADER_LENGTH_MULTIPLE = 2880
+        # additional_whitespace = HEADER_LENGTH_MULTIPLE - len(data) % HEADER_LENGTH_MULTIPLE
+        # data += additional_whitespace * " "
+        # header = pyfits.Header.fromstring(data)
         
-        additional_whitespace = HEADER_LENGTH_MULTIPLE - len(data) % HEADER_LENGTH_MULTIPLE
-        data += additional_whitespace * " "
-        
+        data = data.split("\n")
         header = pyfits.Header()
-        header.fromstring(data)
         
-        return header        
+        for key in data:
+            c = pyfits.Card().fromstring(key)
+            header.ascardlist().append(c)
+        
+        return header   
     
     def __quantize(self, fluxes):
         """
