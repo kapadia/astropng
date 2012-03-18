@@ -69,11 +69,10 @@ class AstroPNG(object):
         
         # If non-integer data type then quantize pixels
         if header['BITPIX'] in (-32, -64):
-            nans = self.__find_nans(fluxes)
+            nan_indices = self.__find_nans(fluxes)
             z_zeros, z_scales, fluxes = self.__quantize(fluxes)
             
             # Replace the nans with zeros
-            nan_indices = numpy.where(numpy.isnan(fluxes))
             fluxes[nan_indices] = 0
         
         # Create a PNG writer object with the appropriate settings
@@ -89,7 +88,7 @@ class AstroPNG(object):
         png_writer.set_header(header)
         if self.quantized:
             png_writer.set_quantization_parameters(z_zeros, z_scales)
-            png_writer.set_nans(nans)
+            png_writer.set_nans(nan_indices)
 
         f = open(out_file, 'wb')
         png_writer.write(f, fluxes)
@@ -130,7 +129,7 @@ class AstroPNG(object):
                 zzero, zscale = self.__read_quantization_parameters(data, height)
                 has_quantization = True
             elif chunk_name == 'nANS':
-                x_nans, y_nans = self.__read_nan_locations(data)
+                y_nans, x_nans = self.__read_nan_locations(data)
                 has_nans = True
             elif chunk_name == 'iEND':
                 break
@@ -149,8 +148,8 @@ class AstroPNG(object):
     def __read_nan_locations(self, data):
         length = len(data) / 4
         locations = numpy.array( struct.unpack("!%dI" % length, data) )
-        x, y = numpy.split(locations, 2)
-        return x, y
+        y, x = numpy.split(locations, 2)
+        return y, x
     
     def __read_quantization_parameters(self, data, num_tiles):
         """
@@ -166,19 +165,14 @@ class AstroPNG(object):
         """
         Reads the FITS header stored in a PNG chunk.
         """
-        # HEADER_LENGTH_MULTIPLE = 2880
-        # additional_whitespace = HEADER_LENGTH_MULTIPLE - len(data) % HEADER_LENGTH_MULTIPLE
-        # data += additional_whitespace * " "
-        # header = pyfits.Header.fromstring(data)
-        
-        data = data.split("\n")
+        cards = data.split("\n")
         header = pyfits.Header()
         
-        for key in data:
-            c = pyfits.Card().fromstring(key)
+        for value in cards:
+            c = pyfits.Card().fromstring(value)
             header.ascardlist().append(c)
         
-        return header   
+        return header
     
     def __quantize(self, fluxes):
         """
@@ -207,8 +201,7 @@ class AstroPNG(object):
         
         e.g. data[y, x] = nan
         """
-        y, x = numpy.where(numpy.isnan(fluxes))
-        return numpy.concatenate((x, y))
+        return numpy.where(numpy.isnan(fluxes))
     
     def __median_absolute_deviations(self, fluxes):
         """

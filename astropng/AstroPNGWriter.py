@@ -169,8 +169,9 @@ class AstroPNGWriter(Writer):
         
         # Write custom chunk with nan locations
         if self.nANS:
-            length = self.nans.size
-            chunk_data = struct.pack("!%dI" % length, *self.nans)
+            nans = numpy.concatenate(self.nans)
+            length = nans.size
+            chunk_data = struct.pack("!%dI" % length, *nans)
             write_chunk(outfile, 'nANS', chunk_data)
 
         # http://www.w3.org/TR/PNG/#11IDAT
