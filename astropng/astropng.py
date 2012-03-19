@@ -1,10 +1,12 @@
 import os
+import shutil
 import struct
 import itertools
 import numpy
 import pyfits
 from png import Reader
 from AstroPNGWriter import AstroPNGWriter
+from utilities import which
 
 class AstroPNG(object):
     """
@@ -28,12 +30,13 @@ class AstroPNG(object):
         self.quantized  = False
         self.clipped    = False
     
-    def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False):
+    def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False, crush = True):
         """
         Converts the FITS file to a PNG.
         
         :param out_file:            User specified filename for the PNG
         :param clip_on_percentiles: Clips flux values to a lower and upper percentile
+        :param crush:               Call pngcrush on the output image
         
         .. warning:: Setting bit_depth to 8 may reduce the dynamic range of the image.        
         .. warning:: Setting clip_on_percentiles to True reduces the dynamic range of the image.
@@ -93,6 +96,15 @@ class AstroPNG(object):
         f = open(out_file, 'wb')
         png_writer.write(f, fluxes)
         f.close()
+        
+        # Crush
+        if crush:
+            pngcrush = which('pngcrush')
+            if pngcrush:
+                path, extension = os.path.splitext(out_file)
+                filename = "%s_crushed%s" % (path, extension)
+                os.system("%s -save %s %s" % (pngcrush, out_file, filename))
+                shutil.move(filename, out_file)
     
     def to_fits(self, out_file):
         """
@@ -253,14 +265,14 @@ class AstroPNG(object):
 
         Computes the pixel value of data at the given percentiles
         """
-        data = numpy.sort(data)
-        num_elements = data.size
+        fluxes = numpy.sort(fluxes)
+        num_elements = fluxes.size
         vmin_index = numpy.floor( lower*(num_elements-1) + 1 )
         vmax_index = numpy.floor( upper*(num_elements-1) + 1 )
         lower_index = numpy.floor( (lower - 0.0015)*(num_elements - 1) + 1 );
         upper_index = numpy.floor( (upper + 0.0015)*(num_elements - 1) + 1 );
 
-        vmin, vmax = data[vmin_index], data[vmax_index]
+        vmin, vmax = fluxes[vmin_index], fluxes[vmax_index]
         return vmin, vmax
     
     def __clip(self, fluxes, vmin, vmax):
@@ -271,10 +283,10 @@ class AstroPNG(object):
 
         Clip data on vmin and vmax.
         """
-        min_indexes = numpy.where( data < vmin )[0]
-        max_indexes = numpy.where( data > vmax )[0]
-        data[min_indexes] = vmin
-        data[max_indexes] = vmax
+        min_indexes = numpy.where( fluxes < vmin )[0]
+        max_indexes = numpy.where( fluxes > vmax )[0]
+        fluxes[min_indexes] = vmin
+        fluxes[max_indexes] = vmax
 
         self.clipped = True
-        return data
+        return fluxes
