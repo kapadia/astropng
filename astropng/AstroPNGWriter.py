@@ -54,7 +54,7 @@ class AstroPNGWriter(Writer):
         """
         self.zzero = zzero
         self.zscale = zscale
-        self.nan_representation = None
+        self.nan_representation = 0
         
         values = numpy.concatenate((zzero, zscale))
         if numpy.isnan(values).any():
@@ -162,7 +162,6 @@ class AstroPNGWriter(Writer):
             parameters[0::2] = self.zzero
             parameters[1::2] = self.zscale
             length = parameters.size
-            
             chunk_data = struct.pack("!I", self.nan_representation)
             chunk_data += struct.pack("!%df" % length, *parameters)
             write_chunk(outfile, 'qANT', chunk_data)

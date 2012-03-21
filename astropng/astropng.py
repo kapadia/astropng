@@ -201,6 +201,7 @@ class AstroPNG(object):
         # Get the zeros and scales of each row then quantize with dithering
         z_zeros     = numpy.nanmin(fluxes, axis = 1)
         z_scales    = self.__zscales(fluxes)
+        
         quantized_data = numpy.round( ( fluxes - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
         
         self.quantized = True
@@ -222,7 +223,7 @@ class AstroPNG(object):
         
         Stoehr, F. et al. 2007, ST-ECF Newsletter. 42, 4
         """
-        n = len(fluxes[0])
+        n = len(fluxes[0])        
         noise = 0.6052697 * numpy.median(numpy.abs(2.0 * fluxes[:, 2:n-2] - fluxes[:, 0:n-4] - fluxes[:, 4:n]), axis = 1)
         return noise
 
