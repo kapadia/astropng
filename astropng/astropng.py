@@ -74,7 +74,6 @@ class AstroPNG(object):
         if header['BITPIX'] in (-32, -64):
             nan_indices = self.__find_nans(fluxes)
             z_zeros, z_scales, fluxes = self.__quantize(fluxes)
-            
             # Replace the nans with zeros
             fluxes[nan_indices] = 0
         
@@ -212,7 +211,7 @@ class AstroPNG(object):
         Locates the NANs in the image.  NANs are present in data represented by floats.
         Returns a 1D array of x, y coordinates.
         
-        e.g. data[y, x] = nan
+        e.g. data[y, x] = numpy.nan
         """
         return numpy.where(numpy.isnan(fluxes))
     
@@ -223,7 +222,8 @@ class AstroPNG(object):
         
         Stoehr, F. et al. 2007, ST-ECF Newsletter. 42, 4
         """
-        n = len(fluxes[0])        
+        n = len(fluxes[0])
+        fluxes[numpy.where(numpy.isnan(fluxes))] = 0.0
         noise = 0.6052697 * numpy.median(numpy.abs(2.0 * fluxes[:, 2:n-2] - fluxes[:, 0:n-4] - fluxes[:, 4:n]), axis = 1)
         return noise
 

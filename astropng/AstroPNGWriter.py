@@ -54,20 +54,13 @@ class AstroPNGWriter(Writer):
         """
         self.zzero = zzero
         self.zscale = zscale
-        self.nan_representation = 0
+        nan_representation = 0
         
         values = numpy.concatenate((zzero, zscale))
-        if numpy.isnan(values).any():
-            self.nan_representation = 0
-            while True:
-                if numpy.where( values == self.nan_representation)[0].size > 0:
-                    self.nan_representation += 1
-                else:
-                    break
         nan_indexes = numpy.where(numpy.isnan(self.zzero))[0]
-        self.zzero[nan_indexes] = self.nan_representation
+        self.zzero[nan_indexes] = nan_representation
         nan_indexes = numpy.where(numpy.isnan(self.zscale))[0]
-        self.zscale[nan_indexes] = self.nan_representation
+        self.zscale[nan_indexes] = nan_representation
         
         self.qANT = True
     
@@ -162,15 +155,15 @@ class AstroPNGWriter(Writer):
             parameters[0::2] = self.zzero
             parameters[1::2] = self.zscale
             length = parameters.size
-            chunk_data = struct.pack("!I", self.nan_representation)
-            chunk_data += struct.pack("!%df" % length, *parameters)
+            
+            chunk_data = struct.pack("!%df" % length, *parameters)
             write_chunk(outfile, 'qANT', chunk_data)
         
         # Write custom chunk with nan locations
         if self.nANS:
             nans = numpy.concatenate(self.nans)
             length = nans.size
-            chunk_data = struct.pack("!%dI" % length, *nans)
+            chunk_data = struct.pack("!%dH" % length, *nans)
             write_chunk(outfile, 'nANS', chunk_data)
 
         # http://www.w3.org/TR/PNG/#11IDAT
