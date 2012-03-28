@@ -63,7 +63,11 @@ class AstroPNG(object):
         if clip_on_percentiles:
             min_pix, max_pix = self.__compute_percentile(fluxes)
             fluxes = self.__clip(fluxes, min_pix, max_pix)
-    
+        
+        # Scale down to zero
+        if header['BITPIX'] == -64:
+            fluxes = fluxes - min_pix
+        
         # Scale image to 8 bit integer space
         if bit_depth == 8:
             range_of_pixels = max_pix - min_pix
@@ -77,7 +81,6 @@ class AstroPNG(object):
         if header['BITPIX'] in (-32, -64):
             nan_indices = self.__find_nans(fluxes)
             z_zeros, z_scales, fluxes = self.__quantize(fluxes)
-            # Replace the nans with zeros
             fluxes[nan_indices] = 0
         
         # Create a PNG writer object with the appropriate settings
@@ -94,7 +97,10 @@ class AstroPNG(object):
         if self.quantized:
             png_writer.set_quantization_parameters(z_zeros, z_scales)
             png_writer.set_nans(nan_indices)
-
+        
+        print fluxes.min()
+        print fluxes.max()
+        print fluxes
         f = open(out_file, 'wb')
         png_writer.write(f, fluxes)
         f.close()
@@ -203,9 +209,10 @@ class AstroPNG(object):
         # Get the zeros and scales of each row then quantize with dithering
         z_zeros     = numpy.nanmin(fluxes, axis = 1)
         z_scales    = self.__zscales(fluxes)
-        
+        print fluxes.min(), fluxes.max()
         quantized_data = numpy.round( ( fluxes - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
-        
+        print numpy.nanmin(quantized_data), numpy.nanmax(quantized_data)
+        print numpy.where(quantized_data > 65535)
         self.quantized = True
         return z_zeros, z_scales, quantized_data
     
