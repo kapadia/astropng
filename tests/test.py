@@ -14,6 +14,7 @@ def generate_fits(data_type = 'integer'):
     """
     DIMENSION = 16
     BITPIX = 16 if data_type == 'integer' else -32
+
     header = pyfits.Header()
     header.update('SIMPLE', 'T')
     header.update('BITPIX', BITPIX)
@@ -24,15 +25,21 @@ def generate_fits(data_type = 'integer'):
     # Generate random data
     data = numpy.random.random(DIMENSION * DIMENSION).astype(numpy.float32).reshape((DIMENSION, DIMENSION))    
     data = (1000*data).astype(numpy.int16) if BITPIX is 16 else data
-    
+
     hdu = pyfits.PrimaryHDU(data, header)
     hdu.writeto('test.fits')
+
 
 class TestAstroPNG(unittest.TestCase):
     """
     Unit testing for AstroPNG format.
     """
-    
+
+    def tearDown(self):
+        os.remove('test.fits')
+        os.remove('test.png')
+        os.remove('test_from_png.fits')
+
     def test_integer_png(self):
         generate_fits(data_type = 'integer')
         
@@ -40,7 +47,7 @@ class TestAstroPNG(unittest.TestCase):
         ap1 = astropng.AstroPNG('test.fits')
         ap1.to_png('test.png', crush=False)
         
-        # Regenerate the FITS file from the PNG
+        # Regenerate the FITS from the PNG
         ap2 = astropng.AstroPNG('test.png')
         ap2.to_fits('test_from_png.fits')
         
@@ -51,13 +58,27 @@ class TestAstroPNG(unittest.TestCase):
         
         for value in validity:
             self.assertTrue(value)
-
-        os.remove('test.fits')
-        os.remove('test.png')
-        os.remove('test_from_png.fits')
-    
+        
     def test_float_png(self):
-        self.assertTrue(True)
+        generate_fits(data_type = 'float')
+        
+        # Create PNG from the test FITS
+        ap1 = astropng.AstroPNG('test.fits')
+        ap1.to_png('test.png', crush=False)
+        
+        # Regenerate the FITS from the PNG
+        ap2 = astropng.AstroPNG('test.png')
+        ap2.to_fits('test_from_png.fits')
+        
+        # Compare the data of each FITS image
+        data1 = pyfits.getdata('test.fits').flatten()
+        data2 = pyfits.getdata('test_from_png.fits').flatten()
+        validity = (data1 == data2)
+        
+        TOLERANCE = 0.003
+        for i in xrange(data1.size):
+            distance = numpy.abs(data1[i] - data2[i])
+            self.assertTrue(distance < TOLERANCE)
 
 if __name__ == '__main__':
     unittest.main()

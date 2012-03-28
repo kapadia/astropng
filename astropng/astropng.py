@@ -53,8 +53,11 @@ class AstroPNG(object):
         fluxes = numpy.flipud(fluxes)
         fluxes = fluxes.flatten()
         
+        if header['BITPIX'] == 16:
+            fluxes = fluxes.astype(numpy.uint16)
+        
         # Determine the minimum pixel and maximum pixel value
-        min_pix, max_pix = fluxes.min(), fluxes.max()
+        min_pix, max_pix = numpy.nanmin(fluxes), numpy.nanmax(fluxes)
         
         # Clip data
         if clip_on_percentiles:
@@ -149,7 +152,8 @@ class AstroPNG(object):
             random_numbers = self.__random_number_generator(N = width * height).reshape( (height, width) )
             fluxes = (fluxes - random_numbers + 0.5) * numpy.vstack(zscale) + numpy.vstack(zzero)
         if has_nans:
-            fluxes[y_nans, x_nans] = numpy.nan
+            if y_nans.size > 0:
+                fluxes[y_nans, x_nans] = numpy.nan
         
         fluxes = numpy.flipud(fluxes)
         hdu = pyfits.PrimaryHDU(fluxes, header)
@@ -166,8 +170,7 @@ class AstroPNG(object):
         """
         Reads the quantization parameters stored in the qANT chunk of a PNG.
         """
-        nan_representation = struct.unpack("!I", data[:4])[0]
-        parameters = numpy.array(struct.unpack("!%df" % (2 * num_tiles), data[4:]))
+        parameters = numpy.array(struct.unpack("!%df" % (2 * num_tiles), data))
         zzero = parameters[0::2]
         zscale = parameters[1::2]
         return zzero, zscale
