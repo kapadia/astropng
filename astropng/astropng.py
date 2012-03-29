@@ -98,9 +98,6 @@ class AstroPNG(object):
             png_writer.set_quantization_parameters(z_zeros, z_scales)
             png_writer.set_nans(nan_indices)
         
-        print fluxes.min()
-        print fluxes.max()
-        print fluxes
         f = open(out_file, 'wb')
         png_writer.write(f, fluxes)
         f.close()
@@ -209,10 +206,8 @@ class AstroPNG(object):
         # Get the zeros and scales of each row then quantize with dithering
         z_zeros     = numpy.nanmin(fluxes, axis = 1)
         z_scales    = self.__zscales(fluxes)
-        print fluxes.min(), fluxes.max()
         quantized_data = numpy.round( ( fluxes - numpy.vstack(z_zeros) ) / numpy.vstack(z_scales) + random_numbers - 0.5 )
-        print numpy.nanmin(quantized_data), numpy.nanmax(quantized_data)
-        print numpy.where(quantized_data > 65535)
+        quantized_data[numpy.where(quantized_data > 65535)] = 65535
         self.quantized = True
         return z_zeros, z_scales, quantized_data
     
