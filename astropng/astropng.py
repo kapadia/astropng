@@ -231,14 +231,16 @@ class AstroPNG(object):
         """
         data = fluxes.copy()
         data[numpy.where(numpy.isnan(data))] = 0.0
-        width = len(data[0])
-        split = numpy.vsplit(data, width)
-        sigmas = numpy.empty(width)
-        for i in xrange(width):
+        num_rows = data.shape[0]
+        split = numpy.vsplit(data, num_rows)
+        sigmas = numpy.empty(num_rows)
+        for i in xrange(num_rows):
             row = split[i]
             row = row[numpy.where(row != 0.0)]
-            n = len(row)
-            sigmas[i] = 0.6052697 * numpy.median(numpy.abs(2.0 * row[2:n-2] - row[0:n-4] - row[4:n]))
+            # n = len(row)
+            # mad = 0.6052697 * numpy.median(numpy.abs(2.0 * row[2:n-2] - row[0:n-4] - row[4:n]))
+            std = numpy.std(row)
+            sigmas[i] = std if std != 0 else 1
         return sigmas
 
     def __zscales(self, fluxes, D = 100):
