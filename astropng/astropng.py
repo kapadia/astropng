@@ -30,7 +30,7 @@ class AstroPNG(object):
         self.quantized  = False
         self.clipped    = False
     
-    def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False, crush = True):
+    def to_png(self, out_file, bit_depth = 16, clip_on_percentiles = False, crush = False):
         """
         Converts the FITS file to a PNG.
         
