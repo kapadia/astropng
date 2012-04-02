@@ -225,12 +225,21 @@ class AstroPNG(object):
         Determines the noise level of each row in a 2D array of fluxes.  This is used when
         quantizing data.
         
+        :param fluxes:  2D array of fluxes
+        
         Stoehr, F. et al. 2007, ST-ECF Newsletter. 42, 4
         """
-        n = len(fluxes[0])
-        fluxes[numpy.where(numpy.isnan(fluxes))] = 0.0
-        noise = 0.6052697 * numpy.median(numpy.abs(2.0 * fluxes[:, 2:n-2] - fluxes[:, 0:n-4] - fluxes[:, 4:n]), axis = 1)
-        return noise
+        data = fluxes.copy()
+        data[numpy.where(numpy.isnan(data))] = 0.0
+        width = len(data[0])
+        split = numpy.vsplit(data, width)
+        sigmas = numpy.empty(width)
+        for i in xrange(width):
+            row = split[i]
+            row = row[numpy.where(row != 0.0)]
+            n = len(row)
+            sigmas[i] = 0.6052697 * numpy.median(numpy.abs(2.0 * row[2:n-2] - row[0:n-4] - row[4:n]))
+        return sigmas
 
     def __zscales(self, fluxes, D = 100):
         """
